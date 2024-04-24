@@ -116,20 +116,31 @@ skip connection parameter : 0 = no skip connection
                             2 = skip connection where skip input size === 2 * input size
 '''
 class gated_resnet(nn.Module):
-    def __init__(self, num_filters, conv_op, nonlinearity=concat_elu, skip_connection=0):
+    def __init__(self, num_filters, conv_op, nonlinearity=concat_elu, skip_connection=0, num_classes = 4 ):
         super(gated_resnet, self).__init__()
         self.skip_connection = skip_connection
         self.nonlinearity = nonlinearity
         self.conv_input = conv_op(2 * num_filters, num_filters) # cuz of concat elu
+        
+        # weights for the conditioning vector
+        if num_classes is not None:
+            self.V_kf = nn.Embedding(num_classes, num_filters)
+            self.V_kg = nn.Embedding(num_classes, num_filters)
 
         if skip_connection != 0 :
             self.nin_skip = nin(2 * skip_connection * num_filters, num_filters)
 
         self.dropout = nn.Dropout2d(0.5)
         self.conv_out = conv_op(2 * num_filters, 2 * num_filters)
+        
+        # Initialize layers for learned spatial transformations
+        # We'll define their shapes dynamically in the forward method
+        self.embedding_to_feature_map_f = nn.Linear(num_filters, num_filters)  # Temporary shape
+        self.embedding_to_feature_map_g = nn.Linear(num_filters, num_filters)  # Temporary shape
 
 
-    def forward(self, og_x, a=None):
+
+    def forward(self, og_x, h=None, a=None):
         x = self.conv_input(self.nonlinearity(og_x))
         if a is not None :
             x += self.nin_skip(self.nonlinearity(a))
@@ -137,5 +148,24 @@ class gated_resnet(nn.Module):
         x = self.dropout(x)
         x = self.conv_out(x)
         a, b = torch.chunk(x, 2, dim=1)
+        if h is not None:
+            # Transform the label embeddings
+            h_transformed_f = self.V_kf(h)  # Shape: [batch_size, num_filters]
+            h_transformed_g = self.V_kg(h)  # Shape: [batch_size, num_filters]
+            
+            # Unsqueezing to add two new axes for height and width
+            # Shape: [batch_size, num_filters, 1, 1]
+            h_transformed_f = h_transformed_f.unsqueeze(2).unsqueeze(3)
+            h_transformed_g = h_transformed_g.unsqueeze(2).unsqueeze(3)
+            
+            # Expanding to match the spatial dimensions of 'a' and 'b'
+            # New shape: [batch_size, num_filters, height, width]
+            h_transformed_f = h_transformed_f.expand_as(a)
+            h_transformed_g = h_transformed_g.expand_as(b)
+            
+            # Adding the transformed conditional vectors to 'a' and 'b'
+            a = a + h_transformed_f
+            b = b +h_transformed_g
+            
         c3 = a * F.sigmoid(b)
         return og_x + c3

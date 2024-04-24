@@ -7,7 +7,7 @@ from torch.nn.utils import weight_norm as wn
 import numpy as np
 import os
 from PIL import Image
-
+from dataset import *
 
 def concat_elu(x):
     """ like concatenated ReLU (http://arxiv.org/abs/1603.05201), but then with ELU """
@@ -36,32 +36,34 @@ def log_prob_from_logits(x):
 def discretized_mix_logistic_loss(x, l):
     """ log-likelihood for mixture of discretized logistics, assumes the data has been rescaled to [-1,1] interval """
     # Pytorch ordering
-    x = x.permute(0, 2, 3, 1)
-    l = l.permute(0, 2, 3, 1)
+    x = x.permute(0, 2, 3, 1) # [batch, channel, height, width] -> [batch, height, width, channel]
+    l = l.permute(0, 2, 3, 1) # [batch, probab , height, width] -> [batch, height, width, probab]
     xs = [int(y) for y in x.size()]
     ls = [int(y) for y in l.size()]
    
     # here and below: unpacking the params of the mixture of logistics
     nr_mix = int(ls[-1] / 10) 
     logit_probs = l[:, :, :, :nr_mix]
-    l = l[:, :, :, nr_mix:].contiguous().view(xs + [nr_mix * 3]) # 3 for mean, scale, coef
+    l = l[:, :, :, nr_mix:].contiguous().view(xs + [nr_mix * 3]) #  [batch, height, width, channel, 3] 3 for mean, scale, coef
     means = l[:, :, :, :, :nr_mix]
     # log_scales = torch.max(l[:, :, :, :, nr_mix:2 * nr_mix], -7.)
     log_scales = torch.clamp(l[:, :, :, :, nr_mix:2 * nr_mix], min=-7.)
    
     coeffs = F.tanh(l[:, :, :, :, 2 * nr_mix:3 * nr_mix])
     # here and below: getting the means and adjusting them based on preceding
-    # sub-pixels
+    # sub-pixels - This basically adjusts the predictions based on the real values
+    # for green (based on red) and blue ( based on red and green)
     x = x.contiguous()
-    x = x.unsqueeze(-1) + Variable(torch.zeros(xs + [nr_mix]).to(x.device), requires_grad=False)
-    m2 = (means[:, :, :, 1, :] + coeffs[:, :, :, 0, :]
+    # Add another dimention [batch, height, width, channels, nr_mix] and broadcast the value to the new dimention
+    x = x.unsqueeze(-1) + Variable(torch.zeros(xs + [nr_mix]).to(x.device), requires_grad=False) 
+    m2 = (means[:, :, :, 1, :] + coeffs[:, :, :, 0, :] # measures channel dependency between red and green
                 * x[:, :, :, 0, :]).view(xs[0], xs[1], xs[2], 1, nr_mix)
 
     m3 = (means[:, :, :, 2, :] + coeffs[:, :, :, 1, :] * x[:, :, :, 0, :] +
                 coeffs[:, :, :, 2, :] * x[:, :, :, 1, :]).view(xs[0], xs[1], xs[2], 1, nr_mix)
 
     means = torch.cat((means[:, :, :, 0, :].unsqueeze(3), m2, m3), dim=3)
-    centered_x = x - means
+    centered_x = x - means #deviation 
     inv_stdv = torch.exp(-log_scales)
     plus_in = inv_stdv * (centered_x + 1. / 255.)
     cdf_plus = F.sigmoid(plus_in)
@@ -71,7 +73,7 @@ def discretized_mix_logistic_loss(x, l):
     log_cdf_plus = plus_in - F.softplus(plus_in)
     # log probability for edge case of 255 (before scaling)
     log_one_minus_cdf_min = -F.softplus(min_in)
-    cdf_delta = cdf_plus - cdf_min  # probability for all other cases
+    cdf_delta = cdf_plus - cdf_min  # probability for all other cases probability that our true value would fall right where it did if the model's guess was accurate
     mid_in = inv_stdv * centered_x
     # log probability in the center of the bin, to be used in extreme cases
     # (not actually used in our code)
@@ -178,11 +180,13 @@ def sample(model, sample_batch_size, obs, sample_op):
     model.train(False)
     with torch.no_grad():
         data = torch.zeros(sample_batch_size, obs[0], obs[1], obs[2])
-        data = data.to(next(model.parameters()).device)
+        data = data.to(next(model.parameters()).device)        
+        class_indices = list(my_bidict.values()) * (sample_batch_size // len(my_bidict))
+        labels = torch.tensor(class_indices, dtype=torch.int64, device=data.device) 
         for i in range(obs[1]):
             for j in range(obs[2]):
                 data_v = data
-                out   = model(data_v, sample=True)
+                out   = model(data_v, labels, sample=True)
                 out_sample = sample_op(out)
                 data[:, :, i, j] = out_sample.data[:, :, i, j]
     return data
