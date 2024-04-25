@@ -149,23 +149,33 @@ class gated_resnet(nn.Module):
         x = self.conv_out(x)
         a, b = torch.chunk(x, 2, dim=1)
         if h is not None:
-            # Transform the label embeddings
-            h_transformed_f = self.V_kf(h)  # Shape: [batch_size, num_filters]
-            h_transformed_g = self.V_kg(h)  # Shape: [batch_size, num_filters]
-            
-            # Unsqueezing to add two new axes for height and width
-            # Shape: [batch_size, num_filters, 1, 1]
-            h_transformed_f = h_transformed_f.unsqueeze(2).unsqueeze(3)
-            h_transformed_g = h_transformed_g.unsqueeze(2).unsqueeze(3)
-            
-            # Expanding to match the spatial dimensions of 'a' and 'b'
-            # New shape: [batch_size, num_filters, height, width]
-            h_transformed_f = h_transformed_f.expand_as(a)
-            h_transformed_g = h_transformed_g.expand_as(b)
-            
-            # Adding the transformed conditional vectors to 'a' and 'b'
-            a = a + h_transformed_f
-            b = b +h_transformed_g
+            _, _, height, width = x.shape
+
+            # Define learned spatial transformations dynamically based on 'x'
+            self.embedding_to_feature_map_f = nn.Sequential(
+                nn.Linear(self.V_kf.embedding_dim, height * width),
+                nn.ReLU()
+            ).to(x.device)
+            self.embedding_to_feature_map_g = nn.Sequential(
+                nn.Linear(self.V_kg.embedding_dim, height * width),
+                nn.ReLU()
+            ).to(x.device)
+           
+            # Map class indices to embeddings
+            h_f = self.V_kf(h)  # Shape: [batch_size, num_filters]
+            h_g = self.V_kg(h)  # Shape: [batch_size, num_filters]
+
+            # Apply learned spatial transformations
+            h_f = self.embedding_to_feature_map_f(h_f)
+            h_g = self.embedding_to_feature_map_g(h_g)
+
+            # Reshape to spatial dimensions
+            h_f = h_f.view(-1, self.V_kf.embedding_dim, height, width)
+            h_g = h_g.view(-1, self.V_kg.embedding_dim, height, width)
+
+            # Combine with 'a' and 'b'
+            a += h_f
+            b += h_g
             
         c3 = a * F.sigmoid(b)
         return og_x + c3
