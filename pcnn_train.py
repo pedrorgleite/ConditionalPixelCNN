@@ -8,6 +8,7 @@ import wandb
 from utils import *
 from model import * 
 from dataset import *
+from classification_evaluation import *
 from tqdm import tqdm
 from pprint import pprint
 import argparse
@@ -22,23 +23,33 @@ def train_or_test(model, data_loader, optimizer, loss_op, device, args, epoch, m
         
     deno =  args.batch_size * np.prod(args.obs) * np.log(2.)        
     loss_tracker = mean_tracker()
+    acc_tracker = ratio_tracker()  # Add accuracy tracker
     
     for batch_idx, item in enumerate(tqdm(data_loader)):
         model_input, categories = item # model_input = [batch, channel, height, width] labels = [batch_size]
         model_input = model_input.to(device)
         labels = [my_bidict[item] for item in categories]
         labels = torch.tensor(labels, dtype=torch.int64).to(device)
-        model_output = model(model_input, labels)
-        loss = loss_op(model_input, model_output)
-        loss_tracker.update(loss.item()/deno)
         if mode == 'training':
+            model_output = model(model_input, labels)
+            loss = loss_op(model_input, model_output)
+            loss_tracker.update(loss.item()/deno)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-        
+        else:
+            predicted_labels = get_label(model, model_input, device)
+            correct_num = torch.sum(predicted_labels == labels)
+            acc_tracker.update(correct_num.item(), model_input.shape[0])
+
     if args.en_wandb:
         wandb.log({mode + "-Average-BPD" : loss_tracker.get_mean()})
-        wandb.log({mode + "-epoch": epoch})
+        wandb.log({mode + "-epoch": epoch})    
+    else:
+        accuracy = acc_tracker.get_ratio()
+        print(f"{mode.capitalize()} Accuracy: {accuracy}")
+        if args.en_wandb:
+            wandb.log({mode + "-Accuracy": accuracy})
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

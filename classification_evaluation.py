@@ -15,13 +15,30 @@ from pprint import pprint
 import argparse
 NUM_CLASSES = len(my_bidict)
 
-# Write your code here
-# And get the predicted label, which is a tensor of shape (batch_size,)
-# Begin of your code
 def get_label(model, model_input, device):
-    answer = model(model_input, device)
-    return answer
-# End of your code
+    num_classes = 4  # Assuming there are 4 classes
+    batch_size = model_input.size(0)
+    predicted_labels = torch.zeros(batch_size, dtype=torch.int64).to(device)
+
+    # Iterate over each image in the batch
+    for i in range(batch_size):
+        single_image = model_input[i].unsqueeze(0)  # Add batch dimension
+        losses = torch.zeros(num_classes).to(device)
+
+        # Iterate over each label
+        for label in range(num_classes):
+            # Create a label tensor for a single image
+            expanded_label = torch.tensor([label], dtype=torch.int64).to(device)
+            # Generate model output for the current label for the single image
+            model_output = model(single_image, expanded_label)
+            # Calculate loss for the single image
+            losses[label] = discretized_mix_logistic_loss(single_image, model_output)
+
+        # Find the label with the minimum loss for this image
+        _, predicted_label = torch.min(losses, dim=0)
+        predicted_labels[i] = predicted_label
+
+    return predicted_labels
 
 def classifier(model, data_loader, device):
     model.eval()
