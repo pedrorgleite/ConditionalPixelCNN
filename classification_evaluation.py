@@ -80,7 +80,7 @@ if __name__ == '__main__':
 
     #Write your code here
     #You should replace the random classifier with your trained model
-    model = PixelCNN(nr_resnet=1, nr_filters=40, input_channels=3, nr_logistic_mix=5, num_classes=NUM_CLASSES)
+    model = PixelCNN(nr_resnet=2, nr_filters=30, input_channels=3, nr_logistic_mix=15)
     
     model = model.to(device)
     #Attention: the path of the model is fixed to 'models/conditional_pixelcnn.pth'

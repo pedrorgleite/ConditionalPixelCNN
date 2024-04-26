@@ -234,11 +234,13 @@ if __name__ == '__main__':
                       mode = 'val')
         
         if epoch % args.sampling_interval == 0:
-            print('......sampling......')
-            sample_t = sample(model, args.sample_batch_size, args.obs, sample_op)
-            sample_t = rescaling_inv(sample_t)
-            save_images(sample_t, args.sample_dir)
-            sample_result = wandb.Image(sample_t, caption="epoch {}".format(epoch))
+            print('......sampling......')    
+            for label_name in my_bidict.keys():
+                print(f"Generating for Label: {label_name}")
+                sample_t = sample(model, args.sample_batch_size, args.obs, sample_op, label_name)
+                sample_t = rescaling_inv(sample_t)
+                save_images(sample_t, args.sample_dir)
+                sample_result = wandb.Image(sample_t, caption="epoch {}".format(epoch))
             
             gen_data_dir = args.sample_dir
             ref_data_dir = args.data_dir +'/test'

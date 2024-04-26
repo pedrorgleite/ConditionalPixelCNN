@@ -12,18 +12,21 @@ from model import *
 from dataset import *
 import os
 import torch
+NUM_CLASSES = len(my_bidict)
 
 # This function should save the generated images to the gen_data_dir, which is fixed as 'samples'
-sample_op = lambda x : sample_from_discretized_mix_logistic(x, 5)
-def my_sample(model, gen_data_dir, sample_batch_size = 25, obs = (3,32,32), sample_op = sample_op):
-    for label in my_bidict:
-        print(f"Label: {label}")
-        #generate images for each label, each label has 25 images
-        sample_t = sample(model, sample_batch_size, obs, sample_op)
-        sample_t = rescaling_inv(sample_t)
-        save_images(sample_t, os.path.join(gen_data_dir), label=label)
-    pass
-
+sample_op = lambda x : sample_from_discretized_mix_logistic(x, 15)
+def my_sample(model, gen_data_dir, sample_batch_size=25, obs=(3, 32, 32), sample_op=sample_from_discretized_mix_logistic):
+    for label_name in my_bidict.keys():
+        print(f"Generating for Label: {label_name}")
+        sample_t = sample(model, sample_batch_size, obs, sample_op, label_name)
+        sample_t = rescaling_inv(sample_t)  # Assuming normalization needs to be reversed
+        # Create directory for each label if not exists
+        label_dir = os.path.join(gen_data_dir, label_name)
+        os.makedirs(label_dir, exist_ok=True)
+        save_images(sample_t, label_dir)
+    print("Generation complete for all labels.")
+    
 if __name__ == "__main__":
     ref_data_dir = "data/test"
     gen_data_dir = "samples"
@@ -33,11 +36,14 @@ if __name__ == "__main__":
     if not os.path.exists(gen_data_dir):
         os.makedirs(gen_data_dir)
     #Begin of your code
-    #Load your model and generate images in the gen_data_dir
-    model = PixelCNN(nr_resnet=1, nr_filters=40, input_channels=3, nr_logistic_mix=5)
+    #Load your model and generate images in the gen_data_dir    
+    
+    model = PixelCNN(nr_resnet=2, nr_filters=30, input_channels=3, nr_logistic_mix=15)
+    sample_op = lambda x : sample_from_discretized_mix_logistic(x, 15)
     model = model.to(device)
+    model.load_state_dict(torch.load('models/conditional_pixelcnn.pth',map_location=torch.device(device) ))
     model = model.eval()
-    my_sample(model=model, gen_data_dir=gen_data_dir)
+    my_sample(model=model, gen_data_dir=gen_data_dir, sample_op = sample_op)
     #End of your code
     paths = [gen_data_dir, ref_data_dir]
     print("#generated images: {:d}, #reference images: {:d}".format(

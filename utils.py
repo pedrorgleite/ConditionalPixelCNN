@@ -176,19 +176,18 @@ def right_shift(x, pad=None):
     return pad(x)
 
 
-def sample(model, sample_batch_size, obs, sample_op):
-    model.train(False)
+def sample(model, sample_batch_size, obs, sample_op, label):
+    model.eval()  # Set the model to evaluation mode.
     with torch.no_grad():
-        data = torch.zeros(sample_batch_size, obs[0], obs[1], obs[2])
-        data = data.to(next(model.parameters()).device)        
-        class_indices = list(my_bidict.values()) * (sample_batch_size // len(my_bidict))
-        labels = torch.tensor(class_indices, dtype=torch.int64, device=data.device) 
+        # Initialize a data tensor with zeros.
+        data = torch.zeros(sample_batch_size, obs[0], obs[1], obs[2], device=next(model.parameters()).device)
+        # Create a tensor filled with the label index for conditioned generation.
+        labels = torch.full((sample_batch_size,), my_bidict[label], dtype=torch.int64, device=data.device)
+        # Sampling over spatial dimensions (assuming image dimensions).
         for i in range(obs[1]):
             for j in range(obs[2]):
-                data_v = data
-                out   = model(data_v, labels, sample=True)
-                out_sample = sample_op(out)
-                data[:, :, i, j] = out_sample.data[:, :, i, j]
+                out = model(data, labels, sample=True)
+                data[:, :, i, j] = sample_op(out).data[:, :, i, j]
     return data
 
 class mean_tracker:
