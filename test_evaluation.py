@@ -71,7 +71,7 @@ def process_images_and_update_csv(model, data_loader, device, csv_path, images_f
 
     # Save all losses to a numpy array file and update the CSV
     np.save(npy_path, np.array(all_losses_array))
-    df.to_csv(csv_path, index=False)
+    df.to_csv('test_results.csv', index=False)
     print("Updated CSV and saved losses.")
 
 if __name__ == '__main__':
