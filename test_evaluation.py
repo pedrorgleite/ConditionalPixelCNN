@@ -27,9 +27,12 @@ def get_label_and_losses(model, model_input, device):
             expanded_label = torch.tensor([label], dtype=torch.int64).to(device)
             model_output = model(single_image, expanded_label)
             all_losses[i, label] = discretized_mix_logistic_loss(single_image, model_output)
+            del model_output  # Free memory immediately after use
+            torch.cuda.empty_cache()  # Clear unused memory
         
         # Find the label with the minimum loss for this image
         predicted_label = torch.argmin(all_losses, dim=1)
+        torch.cuda.empty_cache()
         predicted_labels[i] = predicted_label
     return predicted_labels, all_losses
 
