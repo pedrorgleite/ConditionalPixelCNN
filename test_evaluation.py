@@ -51,6 +51,8 @@ def process_images_and_update_csv(model, data_loader, device, csv_path, images_f
     # Iterate over image filenames in the dataframe
     for index, row in df.iterrows():
         filename = row['id']  # Adjust column name as necessary
+        
+        row['id'] = os.path.basename(filename)
         image_path = os.path.join(images_folder, filename)
         
         for batch_idx, item in enumerate(data_loader):
@@ -75,7 +77,7 @@ def process_images_and_update_csv(model, data_loader, device, csv_path, images_f
 if __name__ == '__main__':
 
     ref_data_dir = "data/test"
-    gen_data_dir = "samples_test"
+    gen_data_dir = "samples"
     npy_path = 'data/test'
 
     if not os.path.exists(gen_data_dir):

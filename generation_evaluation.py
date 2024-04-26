@@ -27,7 +27,7 @@ def my_sample(model, gen_data_dir, sample_batch_size=50, obs=(3, 32, 32), sample
     
 if __name__ == "__main__":
     ref_data_dir = "data/test"
-    gen_data_dir = "samples"
+    gen_data_dir = "samples_gen"
     BATCH_SIZE=128
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
