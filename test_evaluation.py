@@ -99,6 +99,7 @@ if __name__ == '__main__':
     batch_size = 1
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = PixelCNN(nr_resnet=2, nr_filters=30, input_channels=3, nr_logistic_mix=15)
+    sample_op = lambda x : sample_from_discretized_mix_logistic(x, 15)
     model.load_state_dict(torch.load('models/conditional_pixelcnn.pth', map_location=device))
     model.to(device).eval()
     
@@ -109,10 +110,18 @@ if __name__ == '__main__':
 
     process_images_and_update_csv(model, dataloader, device, csv_path, gen_data_dir, npy_path)
 
-    # FID score calculation and appending to CSV
+    my_sample(model=model, gen_data_dir=gen_data_dir, sample_op = sample_op)
     paths = [gen_data_dir, ref_data_dir]
-    fid_score = calculate_fid_given_paths(paths, batch_size, device, dims=2048)
-    print("FID score calculated:", fid_score)
-    append_fid_to_csv(csv_path, fid_score)
+    print("#generated images: {:d}, #reference images: {:d}".format(
+        len(os.listdir(gen_data_dir)), len(os.listdir(ref_data_dir))))
+    try:
+        fid_score = calculate_fid_given_paths(paths, 128, device, dims=192)
+        print("Dimension {:d} works! fid score: {}".format(192, fid_score, gen_data_dir))
+    except:
+        print("Dimension {:d} fails!".format(192))
+        
+    print("Average fid score: {}".format(fid_score))
+
+    append_fid_to_csv('test_results.csv', fid_score)
 
     print("Updated CSV and saved losses.")
