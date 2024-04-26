@@ -27,10 +27,11 @@ def get_label_and_losses(model, model_input, device):
             expanded_label = torch.tensor([label], dtype=torch.int64).to(device)
             model_output = model(single_image, expanded_label)
             all_losses[i, label] = discretized_mix_logistic_loss(single_image, model_output)
-    
+        
         # Find the label with the minimum loss for this image
-        _, predicted_label = torch.min(all_losses, dim=1)
+        predicted_label = torch.argmin(all_losses, dim=1)
         predicted_labels[i] = predicted_label
+    return predicted_labels, all_losses
 
 def append_fid_to_csv(csv_path, fid_score):
     df = pd.read_csv(csv_path)
@@ -53,21 +54,17 @@ def process_images_and_update_csv(model, data_loader, device, csv_path, images_f
     # Use a list to collect updates
     updated_rows = []
     # Iterate over image filenames in the dataframe
-    for index, row in df.iterrows():
+    for index, row in tqdm(df.iterrows()):
         filename = row['id']  # Adjust column name as necessary
-        
         row['id'] = os.path.basename(filename)
         image_path = os.path.join(images_folder, filename)
         
-        for batch_idx, item in enumerate(data_loader):
-          model_input , _= item
-          model_input = model_input.to(device)
+        model_input , _= data_loader.__getitem__(index)
+        model_input = model_input.unsqueeze(0).to(device)
 
         # Predict labels and calculate losses
         predicted_labels, losses = get_label_and_losses(model, model_input, device)
         all_losses_array.append(losses)
-        print(predicted_labels)
-        print(predicted_labels.item())
         row['label'] = predicted_labels.item()  # Update the label in the DataFrame
 
         # Generate and save image
@@ -99,29 +96,19 @@ if __name__ == '__main__':
     batch_size = 1
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = PixelCNN(nr_resnet=2, nr_filters=30, input_channels=3, nr_logistic_mix=15)
-    sample_op = lambda x : sample_from_discretized_mix_logistic(x, 15)
     model.load_state_dict(torch.load('models/conditional_pixelcnn.pth', map_location=device))
     model.to(device).eval()
     
     csv_path = 'data/test.csv'
     ds_transforms = transforms.Compose([transforms.Resize((32, 32)), rescaling])
     dataset = CPEN455Dataset(root_dir='data', mode='test', transform=ds_transforms)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
 
-    process_images_and_update_csv(model, dataloader, device, csv_path, gen_data_dir, npy_path)
+    process_images_and_update_csv(model, dataset, device, csv_path, gen_data_dir, npy_path)
 
-    my_sample(model=model, gen_data_dir=gen_data_dir, sample_op = sample_op)
+    # FID score calculation and appending to CSV
     paths = [gen_data_dir, ref_data_dir]
-    print("#generated images: {:d}, #reference images: {:d}".format(
-        len(os.listdir(gen_data_dir)), len(os.listdir(ref_data_dir))))
-    try:
-        fid_score = calculate_fid_given_paths(paths, 128, device, dims=192)
-        print("Dimension {:d} works! fid score: {}".format(192, fid_score, gen_data_dir))
-    except:
-        print("Dimension {:d} fails!".format(192))
-        
-    print("Average fid score: {}".format(fid_score))
-
-    append_fid_to_csv('test_results.csv', fid_score)
+    fid_score = calculate_fid_given_paths(paths, batch_size, device, dims=2048)
+    print("FID score calculated:", fid_score)
+    append_fid_to_csv(csv_path, fid_score)
 
     print("Updated CSV and saved losses.")
