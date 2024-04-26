@@ -15,16 +15,14 @@ import torch
 NUM_CLASSES = len(my_bidict)
 
 # This function should save the generated images to the gen_data_dir, which is fixed as 'samples'
-sample_op = lambda x : sample_from_discretized_mix_logistic(x, 15)
-def my_sample(model, gen_data_dir, sample_batch_size=25, obs=(3, 32, 32), sample_op=sample_from_discretized_mix_logistic):
+sample_op = lambda x : sample_from_discretized_mix_logistic(x, 5)
+def my_sample(model, gen_data_dir, sample_batch_size=50, obs=(3, 32, 32), sample_op=sample_from_discretized_mix_logistic):
     for label_name in my_bidict.keys():
         print(f"Generating for Label: {label_name}")
         sample_t = sample(model, sample_batch_size, obs, sample_op, label_name)
         sample_t = rescaling_inv(sample_t)  # Assuming normalization needs to be reversed
         # Create directory for each label if not exists
-        label_dir = os.path.join(gen_data_dir, label_name)
-        os.makedirs(label_dir, exist_ok=True)
-        save_images(sample_t, label_dir)
+        save_images(sample_t, gen_data_dir, label = label_name)
     print("Generation complete for all labels.")
     
 if __name__ == "__main__":

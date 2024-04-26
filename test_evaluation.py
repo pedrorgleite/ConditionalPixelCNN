@@ -2,14 +2,16 @@ import os
 import numpy as np
 import pandas as pd
 import torch
-from torchvision import datasets, transforms
+from torchvision import transforms
 from tqdm import tqdm
 import argparse
+from PIL import Image
 from generation_evaluation import my_sample
 from utils import *
-from model import PixelCNN
-from dataset import CPEN455Dataset
+from model import *
+from dataset import *
 from pytorch_fid.fid_score import calculate_fid_given_paths
+
 
 def get_label_and_losses(model, model_input, device):
     num_classes = 4  # Assuming there are 4 classes
@@ -34,60 +36,70 @@ def append_fid_to_csv(csv_path, fid_score):
     df_final = pd.concat([df, fid_row], ignore_index=True)
     df_final.to_csv(csv_path, index=False)
 
-def update_csv_and_save_losses(data_loader, model, device, csv_path, npy_path):
-    # Assuming the existing CSV has correct filename in the first column.
-    df_existing = pd.read_csv(csv_path, header=None, names=['id', 'label'])
-    filenames = df_existing['id'].tolist()
-    predicted_labels_list = []
-    all_losses_list = []
+def save_images(tensor, images_folder_path, filename):
+    os.makedirs(images_folder_path, exist_ok=True)
+    filename = os.path.basename(filename)
+    image_path = os.path.join(images_folder_path, f"{filename}.jpg")
+    img = Image.fromarray((tensor.detach().cpu().numpy().transpose(1, 2, 0) * 255).astype(np.uint8), mode='RGB')
+    img.save(image_path)
 
-    for batch_idx, (model_input, _) in enumerate(tqdm(data_loader, desc="Processing batches")):
-        model_input = model_input.to(device)
+def process_images_and_update_csv(model, data_loader, device, csv_path, images_folder, npy_path):
+    # Load DataFrame
+    df = pd.read_csv(csv_path, header=None, names=['id', 'label'])
+    all_losses_array = []
+
+    # Iterate over image filenames in the dataframe
+    for index, row in df.iterrows():
+        filename = row['id']  # Adjust column name as necessary
+        image_path = os.path.join(images_folder, filename)
+        
+        for batch_idx, item in enumerate(data_loader):
+          model_input , _= item
+          model_input = model_input.to(device)
+
+        # Predict labels and calculate losses
         predicted_labels, losses = get_label_and_losses(model, model_input, device)
-        all_losses_list.append(losses)
-        predicted_labels_list.extend(predicted_labels.cpu().numpy())
+        all_losses_array.append(losses)
+        row['label'] = predicted_labels.item()  # Update the label in the DataFrame
 
-    if len(predicted_labels_list) == len(filenames):
-        df_existing['label'] = predicted_labels_list  # Update labels
-        df_existing.to_csv('data/test_out.csv', index=False, header=True)  # Save with column headers
-        all_losses_array = np.concatenate(all_losses_list, axis=0)
-        np.save(npy_path, all_losses_array)
-    else:
-        print("Error: Mismatch in the lengths of filenames and predictions.")
+        # Generate and save image
+        model_output = model(model_input,predicted_labels)  # Assuming model returns generated image tensor
+        sample_t = rescaling_inv(model_output)  # Normalize or scale the tensor as necessary
+        save_images(sample_t.squeeze(0), images_folder, filename)  # Save the generated image
+
+    # Save all losses to a numpy array file and update the CSV
+    np.save(npy_path, np.array(all_losses_array))
+    df.to_csv(csv_path, index=False)
+    print("Updated CSV and saved losses.")
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--data_dir', type=str, default='data', help='Location for the dataset')
-    parser.add_argument('-c', '--csv_path', type=str, default='data/test.csv', help='Path to the CSV file to update')
-    parser.add_argument('-n', '--npy_path', type=str, default='losses.npy', help='Path to save the losses .npy file')
-    parser.add_argument('-b', '--batch_size', type=int, default=32, help='Batch size for inference')
-    args = parser.parse_args()
 
     ref_data_dir = "data/test"
-    gen_data_dir = "samples"
+    gen_data_dir = "samples_test"
+    npy_path = 'data/test'
 
     if not os.path.exists(gen_data_dir):
         os.makedirs(gen_data_dir)
+   
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device:", device)
-
-    # Model setup
+    batch_size = 1
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = PixelCNN(nr_resnet=2, nr_filters=30, input_channels=3, nr_logistic_mix=15)
     model.load_state_dict(torch.load('models/conditional_pixelcnn.pth', map_location=device))
     model.to(device).eval()
-
-    # Data loader setup
+    
+    csv_path = 'data/test.csv'
     ds_transforms = transforms.Compose([transforms.Resize((32, 32)), rescaling])
-    dataset = CPEN455Dataset(root_dir=args.data_dir, mode='test', transform=ds_transforms)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
+    dataset = CPEN455Dataset(root_dir='data', mode='test', transform=ds_transforms)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False)
 
-    my_sample(model=model, gen_data_dir=gen_data_dir,sample_batch_size =200)
-    # Run the update and save process
-    update_csv_and_save_losses(dataloader, model, device, args.csv_path, args.npy_path)
+    process_images_and_update_csv(model, dataloader, device, csv_path, gen_data_dir, npy_path)
+
     # FID score calculation and appending to CSV
     paths = [gen_data_dir, ref_data_dir]
-    fid_score = calculate_fid_given_paths(paths, args.batch_size, device, dims=2048)
+    fid_score = calculate_fid_given_paths(paths, batch_size, device, dims=2048)
     print("FID score calculated:", fid_score)
-    append_fid_to_csv(args.csv_path, fid_score)
+    append_fid_to_csv(csv_path, fid_score)
 
     print("Updated CSV and saved losses.")
