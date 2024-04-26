@@ -49,6 +49,8 @@ def update_csv_and_save_losses(data_loader, model, device, csv_path, npy_path):
 
     if len(predicted_labels_list) == len(filenames):
         df_existing['label'] = predicted_labels_list  # Update labels
+        # Remove 'test/' from the 'id' column
+        df_existing['id'] = df_existing['id'].str.replace('test/', '', regex=True)
         df_existing.to_csv('test_results.csv', index=False, header=True)  # Save with column headers
         all_losses_array = np.concatenate(all_losses_list, axis=0)
         np.save(npy_path, all_losses_array)
