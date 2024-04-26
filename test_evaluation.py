@@ -17,7 +17,8 @@ def get_label_and_losses(model, model_input, device):
     num_classes = 4  # Assuming there are 4 classes
     batch_size = model_input.size(0)
     all_losses = torch.zeros((batch_size, num_classes)).to(device)
-    
+    predicted_labels = torch.zeros(batch_size, dtype=torch.int64).to(device)
+
     # Iterate over each image in the batch
     for i in range(batch_size):
         single_image = model_input[i].unsqueeze(0)  # Add batch dimension
@@ -27,8 +28,9 @@ def get_label_and_losses(model, model_input, device):
             model_output = model(single_image, expanded_label)
             all_losses[i, label] = discretized_mix_logistic_loss(single_image, model_output)
     
-    predicted_labels = torch.argmin(all_losses, dim=1)
-    return predicted_labels, all_losses.detach().cpu().numpy()
+        # Find the label with the minimum loss for this image
+        _, predicted_label = torch.min(all_losses, dim=1)
+        predicted_labels[i] = predicted_label
 
 def append_fid_to_csv(csv_path, fid_score):
     df = pd.read_csv(csv_path)
