@@ -48,6 +48,8 @@ def process_images_and_update_csv(model, data_loader, device, csv_path, images_f
     df = pd.read_csv(csv_path, header=None, names=['id', 'label'])
     all_losses_array = []
 
+    # Use a list to collect updates
+    updated_rows = []
     # Iterate over image filenames in the dataframe
     for index, row in df.iterrows():
         filename = row['id']  # Adjust column name as necessary
@@ -69,9 +71,14 @@ def process_images_and_update_csv(model, data_loader, device, csv_path, images_f
         sample_t = rescaling_inv(model_output)  # Normalize or scale the tensor as necessary
         save_images(sample_t.squeeze(0), images_folder, filename)  # Save the generated image
 
+        # Collect updated row
+        updated_rows.append(row)
+
+    # Reconstruct DataFrame
+    df_updated = pd.DataFrame(updated_rows)
     # Save all losses to a numpy array file and update the CSV
     np.save(npy_path, np.array(all_losses_array))
-    df.to_csv('test_results.csv', index=False)
+    df_updated.to_csv('test_results.csv', index=False)
     print("Updated CSV and saved losses.")
 
 if __name__ == '__main__':
