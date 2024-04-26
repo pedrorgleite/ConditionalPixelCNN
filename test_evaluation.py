@@ -64,6 +64,8 @@ def process_images_and_update_csv(model, data_loader, device, csv_path, images_f
         # Predict labels and calculate losses
         predicted_labels, losses = get_label_and_losses(model, model_input, device)
         all_losses_array.append(losses)
+        print(predicted_labels)
+        print(predicted_labels.item())
         row['label'] = predicted_labels.item()  # Update the label in the DataFrame
 
         # Generate and save image
@@ -85,7 +87,7 @@ if __name__ == '__main__':
 
     ref_data_dir = "data/test"
     gen_data_dir = "samples"
-    npy_path = 'data/test'
+    npy_path = 'test_logits'
 
     if not os.path.exists(gen_data_dir):
         os.makedirs(gen_data_dir)
