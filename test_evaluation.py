@@ -54,7 +54,7 @@ def process_images_and_update_csv(model, data_loader, device, csv_path, images_f
     # Use a list to collect updates
     updated_rows = []
     # Iterate over image filenames in the dataframe
-    for index, row in tqdm(df.iterrows()):
+    for index, row in df.iterrows():
         filename = row['id']  # Adjust column name as necessary
         row['id'] = os.path.basename(filename)
         image_path = os.path.join(images_folder, filename)
